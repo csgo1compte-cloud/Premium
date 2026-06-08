@@ -1,0 +1,169 @@
+local VoidUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/csgo1compte-cloud/Keysys/refs/heads/main/RayvoidU2"))()
+VoidUI:SetScriptName("Military Map")
+VoidUI:SetPremium(true)
+
+local LocalPlayer = game:GetService("Players").LocalPlayer
+local Event = game:GetService("ReplicatedStorage")["ncxyzero_bridgenet2-fork@1.1.5"].dataRemoteEvent
+
+-- ══════════════════════════════════
+--  DATA
+-- ══════════════════════════════════
+
+local shopItems = {
+    { Label = "Farm", Items = {
+        "FarmWheat", "FarmCarrots", "FarmCorn", "TreeFarm", "Windmill",
+        "CaveIron", "CaveCoal", "CaveGold", "CaveUran", "CaveDiamond",
+        "WoodPlant", "CementPlant", "OilAmerica", "Bank", "Library",
+        "Labs", "Blackhole Generator", "NuclearReactor", "Data Center",
+        "Area51Lab", "AntimatterReactor", "QuantumCoreGenerator"
+    }},
+    { Label = "House", Items = {
+        "FarmHouse", "SmallHouse", "House", "Villa", "ApartmentBuilding",
+        "ModernBlock", "Skyscraper", "HelixTower", "TheManor", "Hotel",
+        "Giant Skyscraper", "TwinTurboTower"
+    }},
+    { Label = "Military", Items = {
+        "BorderTower", "Barracks", "SniperTower", "Barracks2", "TankBase",
+        "HeliPad", "SpecialForce", "MissleHangar", "Hangar", "BigTankBase",
+        "BigHangar", "MissleLauncher", "MilitaryHospital", "GeneralsBase",
+        "Air Base", "Artillery Depot", "Rocket Bunker", "MechStation",
+        "SpiderBase", "AirFortress"
+    }},
+    { Label = "Decor", Items = {
+        "Lamp", "Workshop", "StreetLamp", "Fountain", "PineTree", "Tree",
+        "Flowers", "Grass", "Bench", "Statue", "Worker Statue",
+        "Soldier Statue", "SalutingStatue", "TrafficLights", "Road1",
+        "Road2", "Road3", "RoadWithCar"
+    }},
+}
+
+local itemToShop = {}
+for _, group in ipairs(shopItems) do
+    for _, itemName in ipairs(group.Items) do
+        itemToShop[itemName] = group.Label
+    end
+end
+
+-- ══════════════════════════════════
+--  HELPERS
+-- ══════════════════════════════════
+
+local function getMyPlot()
+    for _, plot in ipairs(workspace.MilitaryMap.PlayerPlots:GetChildren()) do
+        local label = plot:FindFirstChild("UI")
+            and plot.UI:FindFirstChild("BillboardGui")
+            and plot.UI.BillboardGui:FindFirstChild("Holder")
+            and plot.UI.BillboardGui.Holder:FindFirstChild("PlayerName")
+        if label and label.Text:find(LocalPlayer.Name) then
+            return plot
+        end
+    end
+end
+
+local function getStock(itemName)
+    local frame = LocalPlayer.PlayerGui.MainUI.Fullscreen.BuyUI.ItemsGrid:FindFirstChild(itemName)
+    if not frame then return 0 end
+    local stock = frame:FindFirstChild("Stock")
+    if not stock then return 0 end
+    if stock.Text == "Out of Stock!" then return 0 end
+    local n = stock.Text:match("Stock x(%d+)")
+    return tonumber(n) or 0
+end
+
+local function buyItem(itemName)
+    local shop = itemToShop[itemName]
+    if not shop then return end
+    local count = getStock(itemName)
+    if count <= 0 then return end
+    for _ = 1, count do
+        Event:FireServer({
+            { item = itemName, shop = shop },
+            "#"
+        })
+        task.wait(0.15)
+    end
+end
+
+local function collectFarms()
+    local plot = getMyPlot()
+    if not plot then return end
+    for _, building in ipairs(plot.Plot.Buildings:GetChildren()) do
+        if building:GetAttribute("type") == "Farm" then
+            Event:FireServer({ building, ";" })
+            task.wait(0.1)
+        end
+    end
+end
+
+-- ══════════════════════════════════
+--  STATE
+-- ══════════════════════════════════
+
+local selectedItems  = {}
+local autoBuyEnabled = false
+local collectEnabled = false
+
+-- ══════════════════════════════════
+--  UI
+-- ══════════════════════════════════
+
+local Window = VoidUI:CreateWindow({ Name = "Military Map" })
+local Tab = Window:CreateTab("Farm")
+
+Tab:CreateSection("Collect & Sell")
+
+Tab:CreateToggle({
+    Name         = "Auto Collect",
+    CurrentValue = false,
+    Flag         = "AutoCollect",
+    Callback     = function(state)
+        collectEnabled = state
+        if not state then return end
+        task.spawn(function()
+            while collectEnabled do
+                collectFarms()
+                task.wait(120)
+            end
+        end)
+    end,
+})
+
+Tab:CreateSection("Auto Buy")
+
+Tab:CreateToggle({
+    Name         = "Auto Buy",
+    CurrentValue = false,
+    Flag         = "AutoBuy",
+    Callback     = function(state)
+        autoBuyEnabled = state
+        if not state then return end
+        task.spawn(function()
+            while autoBuyEnabled do
+                for itemName, _ in pairs(selectedItems) do
+                    buyItem(itemName)
+                    task.wait(0.1)
+                end
+                task.wait(120)
+            end
+        end)
+    end,
+})
+
+local groups = {}
+for _, group in ipairs(shopItems) do
+    local items = {}
+    for _, itemName in ipairs(group.Items) do
+        local frame = LocalPlayer.PlayerGui.MainUI.Fullscreen.BuyUI.ItemsGrid:FindFirstChild(itemName)
+        local img = frame and frame:FindFirstChild("Template") and frame.Template:FindFirstChild("RenderImage")
+        table.insert(items, { Name = itemName, Icon = img and img.Image or "" })
+    end
+    table.insert(groups, { Label = group.Label, Items = items })
+end
+
+Tab:CreateFilteredCardGrid({
+    Groups   = groups,
+    Columns  = 3,
+    Callback = function(selected)
+        selectedItems = selected
+    end,
+})
