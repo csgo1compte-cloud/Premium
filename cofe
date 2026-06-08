@@ -1,0 +1,340 @@
+-- ════════════════════════════
+-- WARNING SCREEN
+-- ════════════════════════════
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "WarningGui"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = game:GetService("CoreGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 500, 0, 220)
+frame.Position = UDim2.new(0.5, -250, 0.5, -110)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+frame.BorderSizePixel = 0
+frame.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 12)
+corner.Parent = frame
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 50)
+title.Position = UDim2.new(0, 0, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "⚠️ Auto Place — Info"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextSize = 20
+title.Font = Enum.Font.GothamBold
+title.Parent = frame
+
+local message = Instance.new("TextLabel")
+message.Size = UDim2.new(1, -40, 0, 80)
+message.Position = UDim2.new(0, 20, 0, 55)
+message.BackgroundTransparency = 1
+message.Text = "You need to be inside the building\nfor Auto Place to work correctly."
+message.TextColor3 = Color3.fromRGB(200, 200, 200)
+message.TextSize = 16
+message.Font = Enum.Font.Gotham
+message.TextWrapped = true
+message.Parent = frame
+
+local button = Instance.new("TextButton")
+button.Size = UDim2.new(1, -40, 0, 45)
+button.Position = UDim2.new(0, 20, 0, 150)
+button.BackgroundColor3 = Color3.fromRGB(34, 197, 94)
+button.Text = "Got it ✓"
+button.TextColor3 = Color3.fromRGB(255, 255, 255)
+button.TextSize = 16
+button.Font = Enum.Font.GothamBold
+button.BorderSizePixel = 0
+button.Parent = frame
+
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 8)
+btnCorner.Parent = button
+
+button.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+    -- ici le reste du script
+
+local UI = loadstring(game:HttpGet("https://raw.githubusercontent.com/csgo1compte-cloud/Keysys/refs/heads/main/RayvoidU2"))()
+UI:SetScriptName("SpinScript")
+UI:SetPremium(true)
+
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+-- ════════════════════════════
+-- PLOT
+-- ════════════════════════════
+local plot = nil
+for _, p in ipairs(workspace.Main.Plots:GetChildren()) do
+    if p:GetAttribute("Owner") == player.UserId then
+        plot = p
+        break
+    end
+end
+
+-- ════════════════════════════
+-- STATE
+-- ════════════════════════════
+local autoRollEnabled  = false
+local autoPlaceEnabled = false
+local isPlacing        = false
+
+local selectedRarities = {}
+
+local RARITY_ORDER = {
+    "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Divine", "Secret"
+}
+
+-- ════════════════════════════
+-- AUTO PLACE
+-- ════════════════════════════
+local function parseCash(str)
+    if not str or str == "" then return nil end
+    str = str:gsub("%+%$", ""):gsub(",", ""):gsub("%s", "")
+    local num = tonumber(str)
+    if num then return num end
+    local val, suffix = str:match("^([%d%.]+)([KkMmBb]?)$")
+    if not val then return nil end
+    num = tonumber(val)
+    if suffix == "K" or suffix == "k" then num = num * 1000
+    elseif suffix == "M" or suffix == "m" then num = num * 1000000
+    elseif suffix == "B" or suffix == "b" then num = num * 1000000000
+    end
+    return num
+end
+
+local function getHeldCash()
+    local char = workspace:FindFirstChild(player.Name)
+    if not char then return nil end
+    local heldItem = char:FindFirstChild("HeldItem")
+    if not heldItem then return nil end
+    local infoFrame = heldItem:FindFirstChild("InfoUI")
+        and heldItem:FindFirstChild("InfoUI"):FindFirstChild("InfoFrame")
+    if not infoFrame then return nil end
+    local cashText = infoFrame:FindFirstChild("CashText")
+    return cashText and parseCash(cashText.Text)
+end
+
+local function getHeldType()
+    local buildings = plot:FindFirstChild("Buildings")
+    if not buildings then return nil end
+    for _, building in ipairs(buildings:GetChildren()) do
+        if building:GetAttribute("Unlocked") == true then
+            local positions = building:FindFirstChild("Positions")
+            if positions then
+                for _, pos in ipairs(positions:GetChildren()) do
+                    if pos:FindFirstChildOfClass("ProximityPrompt") then
+                        return pos.Name
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function getUnlockedFloors()
+    local floorList = {"Floor1"}
+    local floors = player:FindFirstChild("Floors")
+    if floors then
+        for _, f in ipairs(floors:GetChildren()) do
+            if f:IsA("BoolValue") and f.Value and f.Name ~= "Floor1" then
+                table.insert(floorList, f.Name)
+            end
+        end
+    end
+    return floorList
+end
+
+local function doPlace()
+    isPlacing = true
+
+    local heldCash = getHeldCash()
+    if not heldCash then
+        isPlacing = false
+        return
+    end
+
+    local heldType = getHeldType()
+    if not heldType then
+        game:GetService("ReplicatedStorage").Packages._Index["sleitnick_knit@1.7.0"].knit.Services.SpinService.RF.TrashHeld:InvokeServer()
+        isPlacing = false
+        return
+    end
+
+    local originalFloor = player:GetAttribute("CurrentFloor") or "Floor1"
+    local floorList = getUnlockedFloors()
+
+    local bestCash      = nil
+    local bestFloor     = nil
+    local bestTableName = nil
+
+    for _, floorName in ipairs(floorList) do
+        player:SetAttribute("CurrentFloor", floorName)
+        task.wait(0.2)
+
+        local buildings = plot:FindFirstChild("Buildings")
+        if buildings then
+            for _, building in ipairs(buildings:GetChildren()) do
+                if building:GetAttribute("Unlocked") == true
+                and building:GetAttribute("Floor") == floorName then
+                    local positions = building:FindFirstChild("Positions")
+                    if positions then
+                        local pos = positions:FindFirstChild(heldType)
+                        if pos then
+                            local result = pos:FindFirstChild("Result")
+                            local infoFrame = result
+                                and result:FindFirstChild("InfoUI")
+                                and result:FindFirstChild("InfoUI"):FindFirstChild("InfoFrame")
+                            local cashText = infoFrame and infoFrame:FindFirstChild("CashText")
+                            local cash = cashText and parseCash(cashText.Text)
+
+                            if cash and heldCash > cash then
+                                if not bestCash or cash > bestCash then
+                                    bestCash      = cash
+                                    bestFloor     = floorName
+                                    bestTableName = building.Name
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if bestFloor and bestTableName then
+        player:SetAttribute("CurrentFloor", bestFloor)
+        task.wait(1)
+        local freshPrompt = plot.Buildings[bestTableName].Positions[heldType]:FindFirstChildOfClass("ProximityPrompt")
+        if freshPrompt then
+            fireproximityprompt(freshPrompt)
+        else
+            game:GetService("ReplicatedStorage").Packages._Index["sleitnick_knit@1.7.0"].knit.Services.SpinService.RF.TrashHeld:InvokeServer()
+        end
+    else
+        game:GetService("ReplicatedStorage").Packages._Index["sleitnick_knit@1.7.0"].knit.Services.SpinService.RF.TrashHeld:InvokeServer()
+    end
+
+    player:SetAttribute("CurrentFloor", originalFloor)
+    isPlacing = false
+end
+
+-- ════════════════════════════
+-- AUTO ROLL
+-- ════════════════════════════
+local function doSpin()
+    local spinPrompt = plot.SpinButton.Button:FindFirstChildOfClass("ProximityPrompt")
+    if spinPrompt then
+        fireproximityprompt(spinPrompt)
+    end
+end
+
+local function getPadRarity(pad)
+    local ok, rarity = pcall(function()
+        return pad.OutPart.InfoUI.InfoFrame.RarityText.Text
+    end)
+    return ok and rarity or nil
+end
+
+local function collectAndPlace()
+    local spinPads = plot:FindFirstChild("SpinPads")
+    if not spinPads then return end
+
+    for _, pad in ipairs(spinPads:GetChildren()) do
+        if pad:GetAttribute("Unlocked") == true then
+            local rarity = getPadRarity(pad)
+            if rarity and selectedRarities[rarity] then
+                local takePrompt = pad:FindFirstChild("OutPart")
+                    and pad.OutPart:FindFirstChild("TakePrompt")
+                if takePrompt then
+                    fireproximityprompt(takePrompt)
+                    task.wait(0.5)
+
+                    if autoPlaceEnabled then
+                        local char = workspace:FindFirstChild(player.Name)
+                        local heldItem = char and char:FindFirstChild("HeldItem")
+                        if heldItem then
+                            doPlace()
+                            task.wait(0.3)
+                        end
+                    else
+                        task.wait(0.2)
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function autoRollLoop()
+    while autoRollEnabled do
+        while isPlacing do task.wait(0.2) end
+        doSpin()
+        task.wait(2)
+        collectAndPlace()
+        task.wait(0.5)
+    end
+end
+
+-- ════════════════════════════
+-- UI
+-- ════════════════════════════
+
+    local Win = UI:CreateWindow({
+        Name            = "My-Gaming-Cafe ",
+        LoadingTitle    = "My-Gaming-Cafe",
+        LoadingSubtitle = "by Passolini",
+        Theme           = "Amethyst",
+    })
+
+   
+
+    local Tab = Win:CreateTab("Auto Roll")
+
+    Tab:CreateSection("Raretés à collecter")
+
+    Tab:CreateMultiToggle({
+        Label    = "Filtre raretés",
+        Options  = RARITY_ORDER,
+        Callback = function(selected)
+            selectedRarities = selected
+        end,
+    })
+
+    Tab:CreateSection("Contrôle")
+
+    Tab:CreateToggle({
+        Name         = "Auto Roll",
+        CurrentValue = false,
+        Flag         = "AutoRoll",
+        Callback     = function(v)
+            autoRollEnabled = v
+            if v then
+                task.spawn(autoRollLoop)
+                UI:Notify({ Title = "Auto Roll", Message = "Démarré", Type = "success", Duration = 2 })
+            else
+                UI:Notify({ Title = "Auto Roll", Message = "Arrêté", Type = "warning", Duration = 2 })
+            end
+        end,
+    })
+
+    Tab:CreateToggle({
+        Name         = "Auto Place",
+        CurrentValue = false,
+        Flag         = "AutoPlace",
+        Callback     = function(v)
+            autoPlaceEnabled = v
+            UI:Notify({
+                Title    = "Auto Place",
+                Message  = v and "Activé" or "Désactivé",
+                Type     = v and "success" or "warning",
+                Duration = 2,
+            })
+        end,
+    })
+end)
