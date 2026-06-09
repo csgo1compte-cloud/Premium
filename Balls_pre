@@ -1,6 +1,8 @@
 --https://www.roblox.com/games/139992937215031/Drop-Balls-For-Brainrots
 local Ui = loadstring(game:HttpGet("https://raw.githubusercontent.com/csgo1compte-cloud/RayVoid/refs/heads/main/RayVoid"))()
 Ui:SetScriptName("Ball Drop Farm")
+UI:SetPremium(true)
+
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
