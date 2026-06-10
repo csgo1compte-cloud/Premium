@@ -1,0 +1,293 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+local Ui = loadstring(game:HttpGet("https://raw.githubusercontent.com/csgo1compte-cloud/RayVoid/refs/heads/main/RayVoid"))()
+Ui:SetScriptName("NomDuScript")
+
+local Window = Ui:CreateWindow({
+    Name            = "NomDuScript",
+    LoadingTitle    = "NomDuScript",
+    LoadingSubtitle = "by AKkiwi",
+})
+
+-- ═══════════════════════════════════════════════
+--  UTILS
+-- ═══════════════════════════════════════════════
+
+local function getMyPlot()
+    for _, plot in ipairs(workspace.Plots:GetChildren()) do
+        if plot:GetAttribute("OwnerUserId") == player.UserId then
+            return plot
+        end
+    end
+    return nil
+end
+
+-- ═══════════════════════════════════════════════
+--  TAB MAIN
+-- ═══════════════════════════════════════════════
+
+local MainTab = Window:CreateTab("Main", 4483362458)
+
+MainTab:CreateSection("Farm")
+
+local function collectAll(plot)
+    local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    for _, floor in ipairs(plot:GetChildren()) do
+        if floor.Name:match("^Floor%d+$") then
+            for _, stable in ipairs(floor:GetChildren()) do
+                if stable.Name:match("^Stable%d+$") then
+                    local collectPad = stable:FindFirstChild("CollectPad")
+                    if collectPad then
+                        local ti = collectPad:GetChildren()[2]
+                        if ti then
+                            firetouchinterest(hrp, ti, 0)
+                            task.wait(0.1)
+                            firetouchinterest(hrp, ti, 1)
+                            task.wait(0.1)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+local autoCollect = false
+
+MainTab:CreateToggle({
+    Name         = "Auto Collect",
+    CurrentValue = false,
+    Callback     = function(val)
+        autoCollect = val
+        if autoCollect then
+            task.spawn(function()
+                while autoCollect do
+                    local plot = getMyPlot()
+                    if plot then collectAll(plot) end
+                    task.wait(60)
+                end
+            end)
+        end
+    end,
+})
+
+-- ═══════════════════════════════════════════════
+--  TAB FARM
+-- ═══════════════════════════════════════════════
+
+local FarmTab = Window:CreateTab("Farm", 4483362458)
+
+local PlantSeed   = game:GetService("ReplicatedStorage").Remotes.PlantSeed
+local HarvestCrop = game:GetService("ReplicatedStorage").Remotes.HarvestCrop
+local InventoryUpdate = game:GetService("ReplicatedStorage").Remotes.InventoryUpdate
+
+local rowSlotCounts    = { 9, 9, 9, 8, 8, 8, 9 }
+local rowsUnlockedAtStart = 2
+local allCrops = {
+    { name = "Wheat",    tier = 1 },
+    { name = "Cabbage",  tier = 2 },
+    { name = "Corn",     tier = 3 },
+    { name = "Mushroom", tier = 4 },
+    { name = "Carrot",   tier = 5 },
+    { name = "Melon",    tier = 6 },
+}
+
+local farmUpgrades  = { farmSize = 0, plantType = 0 }
+local farmCrops     = {}
+local selectedCrop  = "Wheat"
+local autoFarm      = false
+
+InventoryUpdate.OnClientEvent:Connect(function(data)
+    if typeof(data) ~= "table" then return end
+    farmCrops   = data.farmCrops or {}
+    farmUpgrades = data.cropShopUpgrades or farmUpgrades
+
+    -- Met à jour le dropdown avec les graines déverrouillées
+    local maxTier = 1 + (farmUpgrades.plantType or 0)
+    local unlocked = {}
+    for _, crop in ipairs(allCrops) do
+        if crop.tier <= maxTier then
+            table.insert(unlocked, crop.name)
+        end
+    end
+    CropDropdown:Refresh(unlocked)
+end)
+
+local function getMaxRows()
+    return rowsUnlockedAtStart + (farmUpgrades.farmSize or 0)
+end
+
+local function getOccupiedSlots()
+    local occupied = {}
+    for _, crop in ipairs(farmCrops) do
+        if crop.row and crop.slot then
+            occupied[crop.row .. ":" .. crop.slot] = true
+        end
+    end
+    return occupied
+end
+
+local function harvestReady()
+    local rows = workspace:FindFirstChild("CropShop") and workspace.CropShop:FindFirstChild("Rows")
+    if not rows then return end
+    for _, row in ipairs(rows:GetChildren()) do
+        for _, slot in ipairs(row:GetChildren()) do
+            if slot:IsA("BasePart") then
+                for _, prompt in ipairs(slot:GetChildren()) do
+                    if prompt:IsA("ProximityPrompt") 
+                        and prompt.ActionText == "Harvest" 
+                        and prompt.Enabled then
+                        fireproximityprompt(prompt)
+                        task.wait(0.1)
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function plantEmpty()
+    local occupied = getOccupiedSlots()
+    local maxRows  = getMaxRows()
+    for row = 1, maxRows do
+        local slotCount = rowSlotCounts[row] or 0
+        for slot = 1, slotCount do
+            if not occupied[row .. ":" .. slot] then
+                PlantSeed:FireServer(row, slot, selectedCrop)
+                task.wait(0.1)
+            end
+        end
+    end
+end
+
+FarmTab:CreateSection("Graine")
+
+local maxTierInit = 1 + (farmUpgrades.plantType or 0)
+local unlockedInit = {}
+for _, crop in ipairs(allCrops) do
+    if crop.tier <= maxTierInit then
+        table.insert(unlockedInit, crop.name)
+    end
+end
+
+CropDropdown = FarmTab:CreateDropdown({
+    Name          = "Graine à planter",
+    Options       = unlockedInit,
+    CurrentOption = { "Wheat" },
+    Callback      = function(sel) selectedCrop = sel[1] end,
+})
+
+FarmTab:CreateSection("Auto Farm")
+
+FarmTab:CreateToggle({
+    Name         = "Auto Farm",
+    CurrentValue = false,
+    Callback     = function(val)
+        autoFarm = val
+        if autoFarm then
+            task.spawn(function()
+                while autoFarm do
+                    harvestReady()
+                    task.wait(1)
+                    plantEmpty()
+                    task.wait(30)
+                end
+            end)
+        end
+    end,
+})
+
+-- ═══════════════════════════════════════════════
+--  TAB SHOP
+-- ═══════════════════════════════════════════════
+
+local ShopTab = Window:CreateTab("Shop", 4483362458)
+
+local Event     = game:GetService("ReplicatedStorage").Remotes.HatchEgg
+local shopFrame = player.PlayerGui.EggShopGui.Frame.Holder.ScrollingFrame
+
+local suffixes = { K=1e3, M=1e6, B=1e9, T=1e12, Qi=1e15, Qa=1e18, Sx=1e21 }
+
+local function parsePrice(str)
+    local num, suf = str:match("%$([%d%.]+)(%a+)")
+    if num and suf then return tonumber(num) * (suffixes[suf] or 1) end
+    local plain = str:match("%$([%d%.]+)")
+    if plain then return tonumber(plain) end
+    return 0
+end
+
+local function getEggs()
+    local eggs = {}
+    for _, child in ipairs(shopFrame:GetChildren()) do
+        if child:IsA("ImageLabel") and not child.Name:match("Template") then
+            local nameLabel  = child:FindFirstChild("NameLabel")
+            local priceLabel = child:FindFirstChild("BuyButton") and child.BuyButton:FindFirstChild("Price")
+            local stockLabel = child:FindFirstChild("StockLabel")
+            if nameLabel and priceLabel and stockLabel
+                and priceLabel.Text ~= "Label" then
+                table.insert(eggs, {
+                    name       = nameLabel.Text,
+                    remoteName = child.Name:gsub("Egg_", ""),
+                    price      = parsePrice(priceLabel.Text),
+                    stock      = stockLabel.Text,
+                })
+            end
+        end
+    end
+    table.sort(eggs, function(a, b) return a.price < b.price end)
+    return eggs
+end
+
+ShopTab:CreateSection("Egg Shop")
+
+local eggs = getEggs()
+local eggNames = {}
+for _, egg in ipairs(eggs) do
+    table.insert(eggNames, egg.name)
+end
+
+local selectedEggs = {}
+
+ShopTab:CreateMultiToggle({
+    Label    = "Select eggs to buy",
+    Options  = eggNames,
+    Callback = function(states) selectedEggs = states end,
+})
+
+local autoBuy = false
+
+
+ShopTab:CreateToggle({
+    Name         = "Auto Buy",
+    CurrentValue = false,
+    Callback     = function(val)
+        autoBuy = val
+        if autoBuy then
+            task.spawn(function()
+                while autoBuy do
+                    local currentEggs = getEggs()
+                    local eggMap = {}
+                    for _, egg in ipairs(currentEggs) do
+                        eggMap[egg.name] = egg
+                    end
+                    for name, enabled in pairs(selectedEggs) do
+                        if enabled then
+                            local egg = eggMap[name]
+                            if egg then
+                                local stock = tonumber(egg.stock:match("%d+"))
+                                if stock and stock > 0 then
+                                    Event:InvokeServer(egg.remoteName, 9999)
+                                    task.wait(0.5)
+                                end
+                            end
+                        end
+                    end
+                    task.wait(120)
+                end
+            end)
+        end
+    end,
+})
