@@ -1,5 +1,5 @@
 --https://www.roblox.com/games/139992937215031/Drop-Balls-For-Brainrots
-local Ui = loadstring(game:HttpGet("https://raw.githubusercontent.com/csgo1compte-cloud/RayVoid/refs/heads/main/RayVoid"))()
+local Ui = loadstring(game:HttpGet("https://raw.githubusercontent.com/csgo1compte-cloud/RayVoid/refs/heads/main/RaydVoid1"))()
 Ui:SetScriptName("Drop-Balls-For-Brainrots")
 Ui:SetPremium(true)
 
@@ -113,16 +113,22 @@ local function getUpgradePrice(upgradeKey)
 end
 
 -- ── UI ───────────────────────────────────────────────────────────────────────
-local Window  = Ui:CreateWindow({ Title = "Ball Drop Farm" })
+local Window = Ui:CreateWindow({
+    Name = "Ball Drop Farm",
+    ConfigurationSaving = {
+        Enabled = true,
+    },
+})
 local Tab     = Window:CreateTab("Main")
 local ShopTab = Window:CreateTab("Auto Shop")
 
 -- Auto Drop
 local dropping = false
 Tab:CreateToggle({
-    Name = "Auto Drop",
+    Name         = "Auto Drop",
     CurrentValue = false,
-    Callback = function(val)
+    Flag         = "AutoDrop",
+    Callback     = function(val)
         dropping = val
         if dropping then
             task.spawn(function()
@@ -140,9 +146,10 @@ Tab:CreateToggle({
 -- Auto Collect & Equip
 local farming = false
 Tab:CreateToggle({
-    Name = "Auto Collect & Equip",
+    Name         = "Auto Collect & Equip",
     CurrentValue = false,
-    Callback = function(val)
+    Flag         = "AutoCollectEquip",
+    Callback     = function(val)
         farming = val
         if farming then
             task.spawn(function()
@@ -171,9 +178,10 @@ for _, upgrade in ipairs(upgrades) do
     local active = false
 
     ShopTab:CreateToggle({
-        Name = "Auto Buy " .. upgrade.name,
+        Name         = "Auto Buy " .. upgrade.name,
         CurrentValue = false,
-        Callback = function(val)
+        Flag         = "AutoBuy_" .. upgrade.key,
+        Callback     = function(val)
             buyToggles[upgrade.key] = val
             if val and not active then
                 active = true
@@ -197,9 +205,10 @@ end
 -- Auto Buy Slot
 local buyingSlot = false
 ShopTab:CreateToggle({
-    Name = "Auto Buy Slot",
+    Name         = "Auto Buy Slot",
     CurrentValue = false,
-    Callback = function(val)
+    Flag         = "AutoBuySlot",
+    Callback     = function(val)
         buyingSlot = val
         if buyingSlot then
             task.spawn(function()
