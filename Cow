@@ -4,7 +4,7 @@ local player = Players.LocalPlayer
 
 local Ui = loadstring(game:HttpGet("https://raw.githubusercontent.com/csgo1compte-cloud/RayVoid/refs/heads/main/RayVoid"))()
 Ui:SetScriptName("Hatch-A-Cow")
-UI:SetPremium(true)
+Ui:SetPremium(true)
 
 local Window = Ui:CreateWindow({
     Name            = "Hatch-A-Cow",
