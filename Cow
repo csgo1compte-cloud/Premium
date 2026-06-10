@@ -1,13 +1,14 @@
+--https://www.roblox.com/games/98624386999411/Hatch-A-Cow
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 
 local Ui = loadstring(game:HttpGet("https://raw.githubusercontent.com/csgo1compte-cloud/RayVoid/refs/heads/main/RayVoid"))()
-Ui:SetScriptName("NomDuScript")
+Ui:SetScriptName("Hatch-A-Cow")
 
 local Window = Ui:CreateWindow({
-    Name            = "NomDuScript",
-    LoadingTitle    = "NomDuScript",
-    LoadingSubtitle = "by AKkiwi",
+    Name            = "Hatch-A-Cow",
+    LoadingTitle    = "Hatch-A-Cow",
+    LoadingSubtitle = "by Passolini",
 })
 
 -- ═══════════════════════════════════════════════
