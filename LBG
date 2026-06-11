@@ -1,0 +1,336 @@
+--https://www.roblox.com/games/103311003648859/Lucky-Block-Game
+local Ui = loadstring(game:HttpGet("https://raw.githubusercontent.com/csgo1compte-cloud/RayVoid/refs/heads/main/RayVoid"))()
+Ui:SetScriptName("Lucky-Block-Game")
+Ui:SetPremium(true)
+
+local RS          = game:GetService("ReplicatedStorage")
+local LocalPlayer = game:GetService("Players").LocalPlayer
+
+local EnergyEvent       = RS:WaitForChild("Remotes"):WaitForChild("EnergyEvent")
+local DoorEvent         = RS:WaitForChild("Remotes"):WaitForChild("DoorEvent")
+local DamageEvent       = RS:WaitForChild("Remotes"):WaitForChild("DamageEvent")
+local BaseUpgradeEvent  = RS:WaitForChild("Remotes"):WaitForChild("BaseUpgradeEvent")
+local BaseUpgradeModule = require(RS:WaitForChild("BaseUpgradeModule"))
+local RebirthEvent      = RS:WaitForChild("Remotes"):WaitForChild("RebirthEvent")
+local BuyBlockEvent     = RS:WaitForChild("Remotes"):WaitForChild("BuyBlockEvent")
+local LuckyBlocksModule = require(RS:WaitForChild("LuckyBlocksModule"))
+local BuyShovelEvent    = RS:WaitForChild("Remotes"):WaitForChild("BuyShovelEvent")
+local ShovelsModule     = require(RS:WaitForChild("ShovelsModule"))
+
+-- State
+local running      = false
+local loopActive   = false
+local blockDebuff  = false
+local blockDamage  = false
+local collecting   = false
+local collectLoop  = false
+local isKillBlock  = false
+local autoUpgrade  = false
+local upgradeLoop  = false
+local autoRebirth   = false
+local rebirthLoop   = false
+local autoBuyBlocks  = false
+local buyBlocksLoop  = false
+local autoBuyShovels = false
+local buyShovelsLoop = false
+
+-- Hook
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local method = getnamecallmethod()
+    if method == "FireServer" then
+        if blockDebuff and self == DoorEvent then
+            local args  = {...}
+            local value = args[1]
+            local op    = args[2]
+            if type(value) == "number" and type(op) == "string" then
+                if (op == "mul" and value < 1) or
+                   (op == "div" and value > 1) or
+                   (op == "add" and value < 0) then
+                    return
+                end
+            end
+        end
+        if blockDamage and self == DamageEvent then
+            if not isKillBlock then
+                return
+            end
+        end
+    end
+    return oldNamecall(self, ...)
+end)
+
+-- Fonction pour trouver la base du joueur
+local function getPlayerBase()
+    for _, base in ipairs(workspace.Bases:GetChildren()) do
+        if base:GetAttribute("Owner") == LocalPlayer.Name then
+            return base
+        end
+    end
+    return nil
+end
+
+-- Fonction collect
+local function doCollect()
+    local base = getPlayerBase()
+    if not base then return end
+
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    for f = 1, 3 do
+        local floor = base:FindFirstChild("Floor" .. f)
+        if not floor then continue end
+
+        local platforms = floor:FindFirstChild("Platforms")
+        if not platforms then continue end
+
+        for p = 1, 10 do
+            local platform = platforms:FindFirstChild(tostring(p))
+            if not platform then continue end
+
+            local collect = platform:FindFirstChild("Collect")
+            if not collect then continue end
+
+            firetouchinterest(hrp, collect, 0)
+            task.wait(0.1)
+            firetouchinterest(hrp, collect, 1)
+            task.wait(0.1)
+        end
+    end
+    task.wait(60)
+end
+
+-- ═══════════════════════════
+--  WINDOW
+-- ═══════════════════════════
+local Window = Ui:CreateWindow({
+    Name            = "Lucky-Block-Game",
+    LoadingTitle    = "Lucky-Block-Game",
+    LoadingSubtitle = "by Passolini",
+    Icon            = 0,
+    ConfigurationSaving = { Enabled = false },
+    KeySystem       = false,
+})
+
+-- ═══════════════════════════
+--  TAB 1 — DUMBBELL
+-- ═══════════════════════════
+local MainTab = Window:CreateTab("🏋️ Dumbbell", 0)
+
+MainTab:CreateSection("Energy")
+
+MainTab:CreateToggle({
+    Name         = "Auto Dumbbell 2x",
+    CurrentValue = false,
+    Flag         = "auto_dumbbell",
+    Callback     = function(v)
+        running = v
+        if running and not loopActive then
+            task.spawn(function()
+                loopActive = true
+                while running do
+                    local liftSpeed = LocalPlayer:GetAttribute("LiftSpeed") or 0
+                    local cooldown  = 1 / (1 + liftSpeed / 100)
+                    EnergyEvent:FireServer(true, 10)
+                    task.wait(cooldown)
+                end
+                loopActive = false
+            end)
+        end
+    end
+})
+
+MainTab:CreateSection("Farm")
+
+MainTab:CreateToggle({
+    Name         = "Auto Collect Money",
+    CurrentValue = false,
+    Flag         = "auto_collect",
+    Callback     = function(v)
+        collecting = v
+        if collecting and not collectLoop then
+            task.spawn(function()
+                collectLoop = true
+                while collecting do
+                    doCollect()
+                    task.wait(1)
+                end
+                collectLoop = false
+            end)
+        end
+    end
+})
+
+MainTab:CreateSection("Combat")
+
+MainTab:CreateButton({
+    Name     = "💀 Kill Block",
+    Callback = function()
+        isKillBlock = true
+        DamageEvent:FireServer(800000000000000)
+        isKillBlock = false
+    end
+})
+
+MainTab:CreateSection("Protection")
+
+MainTab:CreateToggle({
+    Name         = "Block Debuff",
+    CurrentValue = false,
+    Flag         = "block_debuff",
+    Callback     = function(v)
+        blockDebuff = v
+    end
+})
+
+MainTab:CreateToggle({
+    Name         = "God Mode",
+    CurrentValue = false,
+    Flag         = "god_mode",
+    Callback     = function(v)
+        blockDamage = v
+    end
+})
+
+-- ═══════════════════════════
+--  TAB 2 — BASE
+-- ═══════════════════════════
+local BaseTab = Window:CreateTab("🏠 Base", 0)
+
+BaseTab:CreateSection("Upgrade")
+
+BaseTab:CreateToggle({
+    Name         = "Auto Upgrade Base",
+    CurrentValue = false,
+    Flag         = "auto_upgrade",
+    Callback     = function(v)
+        autoUpgrade = v
+        if autoUpgrade and not upgradeLoop then
+            task.spawn(function()
+                upgradeLoop = true
+                while autoUpgrade do
+                    local slots = LocalPlayer:GetAttribute("Slots") or 0
+                    if not BaseUpgradeModule.canBuy(slots) then
+                        autoUpgrade = false
+                        break
+                    end
+                    local cost = BaseUpgradeModule.getCost(slots)
+                    local cash = LocalPlayer.leaderstats.Cash.Value
+                    if cash >= cost then
+                        BaseUpgradeEvent:FireServer()
+                    end
+                    task.wait(0.5)
+                end
+                upgradeLoop = false
+            end)
+        end
+    end
+})
+
+BaseTab:CreateSection("Rebirth")
+
+BaseTab:CreateToggle({
+    Name         = "Auto Rebirth",
+    CurrentValue = false,
+    Flag         = "auto_rebirth",
+    Callback     = function(v)
+        autoRebirth = v
+        if autoRebirth and not rebirthLoop then
+            task.spawn(function()
+                rebirthLoop = true
+                while autoRebirth do
+                    RebirthEvent:FireServer()
+                    task.wait(0.5)
+                end
+                rebirthLoop = false
+            end)
+        end
+    end
+})
+
+-- ═══════════════════════════
+--  TAB 3 — BLOCKS
+-- ═══════════════════════════
+local BlocksTab = Window:CreateTab("🎲 Blocks", 0)
+
+BlocksTab:CreateSection("Auto Buy")
+
+BlocksTab:CreateToggle({
+    Name         = "Auto Buy Lucky Blocks",
+    CurrentValue = false,
+    Flag         = "auto_buy_blocks",
+    Callback     = function(v)
+        autoBuyBlocks = v
+        if autoBuyBlocks and not buyBlocksLoop then
+            task.spawn(function()
+                buyBlocksLoop = true
+                while autoBuyBlocks do
+                    local luckyBlocks = LocalPlayer:FindFirstChild("LuckyBlocks")
+                    local cash        = LocalPlayer.leaderstats.Cash.Value
+                    local allOwned    = true
+
+                    for blockName, blockData in pairs(LuckyBlocksModule) do
+                        if blockName == "Basic Block" then continue end
+                        local owned = luckyBlocks and luckyBlocks:GetAttribute(blockName:gsub(" ", "_")) == true
+                        if not owned then
+                            allOwned = false
+                            if cash >= blockData.Price then
+                                BuyBlockEvent:FireServer(blockName)
+                                task.wait(0.5)
+                                cash = LocalPlayer.leaderstats.Cash.Value
+                            end
+                        end
+                    end
+
+                    if allOwned then
+                        autoBuyBlocks = false
+                        break
+                    end
+                    task.wait(1)
+                end
+                buyBlocksLoop = false
+            end)
+        end
+    end
+})
+
+BlocksTab:CreateSection("Auto Buy Shovels")
+
+BlocksTab:CreateToggle({
+    Name         = "Auto Buy Shovels",
+    CurrentValue = false,
+    Flag         = "auto_buy_shovels",
+    Callback     = function(v)
+        autoBuyShovels = v
+        if autoBuyShovels and not buyShovelsLoop then
+            task.spawn(function()
+                buyShovelsLoop = true
+                while autoBuyShovels do
+                    local shovels  = LocalPlayer:FindFirstChild("Shovels")
+                    local cash     = LocalPlayer.leaderstats.Cash.Value
+                    local allOwned = true
+
+                    for shovelName, shovelData in pairs(ShovelsModule) do
+                        local owned = shovels and shovels:GetAttribute(shovelName:gsub(" ", "_")) == true
+                        if not owned then
+                            allOwned = false
+                            if cash >= shovelData.Price then
+                                BuyShovelEvent:FireServer(shovelName)
+                                task.wait(0.5)
+                                cash = LocalPlayer.leaderstats.Cash.Value
+                            end
+                        end
+                    end
+
+                    if allOwned then
+                        autoBuyShovels = false
+                        break
+                    end
+                    task.wait(1)
+                end
+                buyShovelsLoop = false
+            end)
+        end
+    end
+})
