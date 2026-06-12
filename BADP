@@ -1,0 +1,485 @@
+--140097609164562
+local Ui = loadstring(game:HttpGet("https://raw.githubusercontent.com/csgo1compte-cloud/RayVoid/refs/heads/main/RayVoid"))()
+Ui:SetScriptName("NOM DU SCRIPT")
+
+-- ══════════════════════════════
+--  SERVICES
+-- ══════════════════════════════
+
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
+local Event = game:GetService("ReplicatedStorage").Modules.EventManagerClient.ServerEvent
+
+-- ══════════════════════════════
+--  STATE
+-- ══════════════════════════════
+
+local penActive         = false
+local cashActive        = false
+local autoShopActive    = false
+local autoPenShopActive = false
+local autoPlaceActive   = false
+local autoHatchActive   = false
+local selectedAnimals   = {}
+local selectedPens      = {}
+
+-- ══════════════════════════════
+--  UTILS
+-- ══════════════════════════════
+
+local function getChar()
+    local char = lp.Character
+    return char, char and char:FindFirstChildOfClass("Humanoid"), char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function parseMoney(str)
+    str = str:gsub("%$", ""):gsub(",", "")
+    local suffixes = {K=1e3, M=1e6, B=1e9, T=1e12, Qi=1e15}
+    for suffix, mult in pairs(suffixes) do
+        local n = str:match("^([%d%.]+)"..suffix.."$")
+        if n then return tonumber(n) * mult end
+    end
+    return tonumber(str) or 0
+end
+
+local function parseStock(str)
+    local n = str:match("[xX](%d+)")
+    return tonumber(n) or 0
+end
+
+-- ══════════════════════════════
+--  PEN COLLECT
+-- ══════════════════════════════
+
+local function getMyPens()
+    local pens = {}
+    local userId = lp.UserId
+    for _, pen in ipairs(workspace.Gameplay.Bin:GetChildren()) do
+        if pen.Name:match("^[Pp]en_%d+$") and pen:GetAttribute("Owner") == userId then
+            local cashCollect = pen:FindFirstChild("Gameplay") and pen.Gameplay:FindFirstChild("CashCollect")
+            if cashCollect then
+                table.insert(pens, {
+                    Pen         = pen,
+                    CashCollect = cashCollect,
+                })
+            end
+        end
+    end
+    return pens
+end
+
+task.spawn(function()
+    while true do
+        if not penActive then
+            task.wait(0.5)
+            continue
+        end
+
+        local _, humanoid, hrp = getChar()
+        if not humanoid or not hrp then
+            task.wait(1)
+            continue
+        end
+
+        local pens = getMyPens()
+        if #pens == 0 then
+            task.wait(5)
+            continue
+        end
+
+        for _, penData in ipairs(pens) do
+            if not penActive then break end
+
+            if penData.Pen:GetAttribute("Cash") == 0 then continue end
+
+            local target = penData.CashCollect.Position
+            humanoid:MoveTo(target)
+
+            local elapsed = 0
+            while penActive and elapsed < 6 do
+                local h = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+                if not h then break end
+                if (h.Position - target).Magnitude < 4 then break end
+                task.wait(0.1)
+                elapsed += 0.1
+            end
+
+            task.wait(0.25)
+        end
+
+        local waited = 0
+        while penActive and waited < 120 do
+            task.wait(1)
+            waited += 1
+        end
+    end
+end)
+
+-- ══════════════════════════════
+--  CASH DROP COLLECT
+-- ══════════════════════════════
+
+task.spawn(function()
+    while true do
+        task.wait(0.2)
+        if not cashActive then continue end
+
+        local _, humanoid, hrp = getChar()
+        if not humanoid or not hrp then continue end
+
+        local closest = nil
+        local closestDist = math.huge
+
+        for _, v in ipairs(workspace:GetChildren()) do
+            if v:IsA("BasePart") and v:FindFirstChild("Mesh") then
+                local dist = (v.Position - hrp.Position).Magnitude
+                if dist < closestDist then
+                    closestDist = dist
+                    closest = v
+                end
+            end
+        end
+
+        if closest then
+            humanoid:MoveTo(closest.Position)
+        end
+    end
+end)
+
+-- ══════════════════════════════
+--  ANIMAL SHOP
+-- ══════════════════════════════
+
+local function getAnimalShopItems()
+    local items = {}
+    local sf = lp.PlayerGui.AnimalShop.Main.Content.ScrollingFrame
+    for _, child in ipairs(sf:GetChildren()) do
+        if child.Name == "Template" then
+            local ok, name, price, icon, stock = pcall(function()
+                local n  = child.Details.NameTxt.Text
+                local p  = parseMoney(child.Buttons.BuyCash.Title.Text)
+                local ic = child.Icon.Icon.Image
+                local s  = parseStock(child.Details.Stock.StockTxt.Text)
+                return n, p, ic, s
+            end)
+            if ok then
+                table.insert(items, {
+                    Name  = name,
+                    Price = price,
+                    Icon  = icon,
+                    Stock = stock,
+                })
+            end
+        end
+    end
+    return items
+end
+
+local function runAnimalShopBuy()
+    local items = getAnimalShopItems()
+    for _, item in ipairs(items) do
+        if not autoShopActive then break end
+        if not selectedAnimals[item.Name] then continue end
+        if item.Stock <= 0 then continue end
+        for i = 1, item.Stock do
+            if not autoShopActive then break end
+            pcall(function()
+                Event:FireServer("BuyFromAnimalStock", item.Name)
+            end)
+            task.wait(0.2)
+        end
+    end
+end
+
+task.spawn(function()
+    while true do
+        task.wait(120)
+        if not autoShopActive then continue end
+        runAnimalShopBuy()
+    end
+end)
+
+-- ══════════════════════════════
+--  PEN SHOP
+-- ══════════════════════════════
+
+local function getPenShopItems()
+    local items = {}
+    local sf = lp.PlayerGui.PenShop.Main.Content.ScrollingFrame
+    for _, pen in ipairs(game:GetService("ReplicatedStorage").Assets.Pens:GetChildren()) do
+        if not pen:GetAttribute("InStock") then continue end
+
+        local stock = 0
+        for _, child in ipairs(sf:GetChildren()) do
+            if child.Name == "Template" then
+                local nameTxt = child:FindFirstChild("Details") and child.Details:FindFirstChild("NameTxt")
+                if nameTxt and nameTxt.Text == pen:GetAttribute("Name") then
+                    stock = parseStock(child.Details.Stock.StockTxt.Text)
+                    break
+                end
+            end
+        end
+
+        table.insert(items, {
+            Name  = pen:GetAttribute("Name"),
+            ID    = pen:GetAttribute("ID"),
+            Price = pen:GetAttribute("Price"),
+            Icon  = pen:GetAttribute("Icon"),
+            Stock = stock,
+        })
+    end
+    return items
+end
+
+local function runPenShopBuy()
+    local items = getPenShopItems()
+    for _, item in ipairs(items) do
+        if not autoPenShopActive then break end
+        if not selectedPens[item.Name] then continue end
+        if item.Stock <= 0 then continue end
+        for i = 1, item.Stock do
+            if not autoPenShopActive then break end
+            pcall(function()
+                Event:FireServer("BuyFromPenStock", item.ID)
+            end)
+            task.wait(0.2)
+        end
+    end
+end
+
+task.spawn(function()
+    while true do
+        task.wait(120)
+        if not autoPenShopActive then continue end
+        runPenShopBuy()
+    end
+end)
+
+-- ══════════════════════════════
+--  AUTO PLACE EGG
+-- ══════════════════════════════
+
+local function autoPlace()
+    local _, humanoid, hrp = getChar()
+    if not humanoid or not hrp then return end
+
+    local pens = getMyPens()
+    if #pens == 0 then return end
+
+    for _, penData in ipairs(pens) do
+        if not autoPlaceActive then break end
+
+        local cap    = penData.Pen:GetAttribute("Capacity") or 0
+        local maxCap = penData.Pen:GetAttribute("MaxCapacity") or 0
+        if cap >= maxCap then continue end
+
+        -- Rescan backpack avant chaque pen
+        local tools = {}
+        for _, tool in ipairs(lp.Backpack:GetChildren()) do
+            if tool:GetAttribute("Type") == "Egg" then
+                table.insert(tools, tool)
+            end
+        end
+
+        if #tools == 0 then break end
+
+        local target = penData.CashCollect.Position
+        humanoid:MoveTo(target)
+
+        local elapsed = 0
+        while autoPlaceActive and elapsed < 6 do
+            local h = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+            if not h then break end
+            if (h.Position - target).Magnitude < 5 then break end
+            task.wait(0.1)
+            elapsed += 0.1
+        end
+
+        for _, tool in ipairs(tools) do
+            if not autoPlaceActive then break end
+
+            local c    = penData.Pen:GetAttribute("Capacity") or 0
+            local maxC = penData.Pen:GetAttribute("MaxCapacity") or 0
+            if c >= maxC then break end
+
+            humanoid:EquipTool(tool)
+            task.wait(0.3)
+
+            local prompt = penData.Pen.Gameplay.PlacePrompt:FindFirstChild("PlacePrompt")
+            if prompt then
+                fireproximityprompt(prompt)
+                task.wait(0.5)
+            end
+        end
+
+        humanoid:UnequipTools()
+        task.wait(0.3)
+    end
+end
+
+task.spawn(function()
+    while true do
+        task.wait(120)
+        if not autoPlaceActive then continue end
+        autoPlace()
+    end
+end)
+
+-- ══════════════════════════════
+--  AUTO HATCH EGG
+-- ══════════════════════════════
+
+local function autoHatch()
+    local _, humanoid, hrp = getChar()
+    if not humanoid or not hrp then return end
+
+    local userId = lp.UserId
+
+    for _, obj in ipairs(workspace.Gameplay.Bin:GetChildren()) do
+        if not autoHatchActive then break end
+        if obj:GetAttribute("Owner") ~= userId then continue end
+        if obj:GetAttribute("Type") ~= "Egg" then continue end
+
+        local timePassed  = obj:GetAttribute("TimePassed") or 0
+        local timeToHatch = obj:GetAttribute("TimeToHatch") or 0
+        if timePassed < timeToHatch then continue end
+
+        local prompt = obj:FindFirstChild("HatchPrompt") and obj.HatchPrompt:FindFirstChild("HatchPrompt")
+        if not prompt then continue end
+
+        local target = obj:GetPivot().Position
+        humanoid:MoveTo(target)
+
+        local elapsed = 0
+        while autoHatchActive and elapsed < 6 do
+            local h = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+            if not h then break end
+            if (h.Position - target).Magnitude < 5 then break end
+            task.wait(0.1)
+            elapsed += 0.1
+        end
+
+        fireproximityprompt(prompt)
+        task.wait(0.5)
+    end
+end
+
+task.spawn(function()
+    while true do
+        task.wait(30)
+        if not autoHatchActive then continue end
+        autoHatch()
+    end
+end)
+
+-- ══════════════════════════════
+--  UI
+-- ══════════════════════════════
+
+local Window = Ui:CreateWindow({
+    Name     = "NOM DU SCRIPT",
+    Subtitle = "by Passolini",
+})
+
+-- ── Tab Collect ──
+local TabCollect = Window:CreateTab("Collect", "coins")
+
+TabCollect:CreateToggle({
+    Name        = "Auto Pen Collect",
+    Description = "Collecte le cash de tes pens toutes les 2 min",
+    Default     = false,
+    Callback    = function(val) penActive = val end
+})
+
+TabCollect:CreateToggle({
+    Name        = "Auto Cash Drop",
+    Description = "Se déplace vers les cash drops au sol",
+    Default     = false,
+    Callback    = function(val) cashActive = val end
+})
+
+TabCollect:CreateToggle({
+    Name        = "Auto Place Egg",
+    Description = "Place automatiquement les eggs dans tes pens toutes les 2 min",
+    Default     = false,
+    Callback    = function(val)
+        autoPlaceActive = val
+        if val then task.spawn(autoPlace) end
+    end
+})
+
+TabCollect:CreateToggle({
+    Name        = "Auto Hatch Egg",
+    Description = "Ouvre automatiquement les oeufs prêts toutes les 30s",
+    Default     = false,
+    Callback    = function(val)
+        autoHatchActive = val
+        if val then task.spawn(autoHatch) end
+    end
+})
+
+-- ── Tab Animal Shop ──
+local TabAnimalShop = Window:CreateTab("Animal Shop", "shopping-cart")
+
+TabAnimalShop:CreateToggle({
+    Name        = "Auto Buy",
+    Description = "Achète toutes les 2 min les animaux sélectionnés",
+    Default     = false,
+    Callback    = function(val)
+        autoShopActive = val
+        if val then task.spawn(runAnimalShopBuy) end
+    end
+})
+
+TabAnimalShop:CreateSection("Animaux")
+
+local animalItems = getAnimalShopItems()
+table.sort(animalItems, function(a, b) return a.Price < b.Price end)
+local animalCardItems = {}
+for _, item in ipairs(animalItems) do
+    table.insert(animalCardItems, {
+        Name = item.Name,
+        Icon = item.Icon,
+    })
+end
+
+TabAnimalShop:CreateCardGrid({
+    Items    = animalCardItems,
+    Columns  = 3,
+    Callback = function(selected)
+        selectedAnimals = selected
+    end,
+})
+
+-- ── Tab Pen Shop ──
+local TabPenShop = Window:CreateTab("Pen Shop", "store")
+
+TabPenShop:CreateToggle({
+    Name        = "Auto Buy",
+    Description = "Achète toutes les 2 min les pens sélectionnés",
+    Default     = false,
+    Callback    = function(val)
+        autoPenShopActive = val
+        if val then task.spawn(runPenShopBuy) end
+    end
+})
+
+TabPenShop:CreateSection("Pens")
+
+local penShopItems = getPenShopItems()
+table.sort(penShopItems, function(a, b) return a.Price < b.Price end)
+local penCardItems = {}
+for _, item in ipairs(penShopItems) do
+    table.insert(penCardItems, {
+        Name = item.Name,
+        Icon = item.Icon,
+    })
+end
+
+TabPenShop:CreateCardGrid({
+    Items    = penCardItems,
+    Columns  = 3,
+    Callback = function(selected)
+        selectedPens = selected
+    end,
+})
