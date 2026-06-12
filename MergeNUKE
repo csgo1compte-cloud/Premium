@@ -11,7 +11,7 @@ local player = Players.LocalPlayer
 -- ── UI ──
 local Ui = loadstring(game:HttpGet("https://raw.githubusercontent.com/csgo1compte-cloud/RayVoid/refs/heads/main/RayVoid"))()
 Ui:SetScriptName("Merge a nuke")
-Ui:ShowCredit(function()
+Ui:SetPremium(true)
 
 
 
@@ -512,4 +512,3 @@ LockTab:CreateToggle({
         end
     end,
 })
-end)
