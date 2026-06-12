@@ -1,6 +1,7 @@
 --140097609164562
 local Ui = loadstring(game:HttpGet("https://raw.githubusercontent.com/csgo1compte-cloud/RayVoid/refs/heads/main/RayVoid"))()
-Ui:SetScriptName("NOM DU SCRIPT")
+Ui:SetScriptName("Build-A-Dino-Park")
+Ui:SetPremium(true)
 
 -- ══════════════════════════════
 --  SERVICES
