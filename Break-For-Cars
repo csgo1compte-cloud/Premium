@@ -1,0 +1,358 @@
+local Ui = loadstring(game:HttpGet("https://raw.githubusercontent.com/csgo1compte-cloud/RayVoid/refs/heads/main/RayVoid"))()
+Ui:SetScriptName("Break-For-Cars")
+Ui:SetPremium(true)
+
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectCash = ReplicatedStorage.Remotes.Plot.CollectCash
+local BuyBlock = ReplicatedStorage.Remotes.Block.BuyBlock
+local GetPlot = ReplicatedStorage.Remotes.Plot.GetPlot
+local PlaceItem = ReplicatedStorage.Remotes.Plot.PlaceItem
+local BuyUpgrade = ReplicatedStorage.Remotes.BuyUpgrade
+local UpgradeCar = ReplicatedStorage.Remotes.Car.UpgradeCar
+local PickaxeRemote = ReplicatedStorage.Remotes.Pickaxe.PickaxeRemote
+local PlayerStateClient = require(ReplicatedStorage.Libraries.PlayerState.PlayerStateClient)
+local Upgrade = require(ReplicatedStorage.Shared.Configurations.Upgrade)
+
+local myPlot = workspace.Plots[tostring(GetPlot:InvokeServer())]
+
+local collectLoop = false
+local upgradeLoop = false
+local placeLoop = false
+local buyLoop = false
+local openLoop = false
+local mutationsOnly = false
+local selectedRarities = {}
+local selectedCarRarities = {}
+local upgradeCarLoop = false
+local targetLevel = 0
+
+local RARITY_PRIORITY = {
+    ["Exclusive Lucky Block"] = 11,
+    ["Godly Lucky Block"]     = 10,
+    ["Celestial Lucky Block"] = 9,
+    ["Secret Lucky Block"]    = 8,
+    ["Cosmic Lucky Block"]    = 7,
+    ["Mythic Lucky Block"]    = 6,
+    ["Legendary Lucky Block"] = 5,
+    ["Epic Lucky Block"]      = 4,
+    ["Rare Lucky Block"]      = 3,
+    ["Uncommon Lucky Block"]  = 2,
+    ["Lucky Block"]           = 1,
+}
+
+local RARITIES = {
+    "Common", "Uncommon", "Rare", "Epic", "Legendary",
+    "Mythic", "Cosmic", "Secret", "Celestial", "Godly", "Exclusive"
+}
+
+local function slotHasBlock(slotIndex)
+    local slotModel = myPlot.Slots[tostring(slotIndex)]
+    if not slotModel then return false end
+    for _, child in ipairs(slotModel:GetChildren()) do
+        local ui = child:FindFirstChild("UIAttachment")
+        if ui then
+            local placedBlockUI = ui:FindFirstChild("PlacedBlockUI")
+            if placedBlockUI and placedBlockUI:FindFirstChild("BlockName") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local Window = Ui:CreateWindow({
+    Name = "Break-For-Cars",
+    LoadingTitle = "Break-For-Cars",
+    LoadingSubtitle = "by Passolini",
+})
+
+-- ══ TAB MAIN ══
+local TabMain = Window:CreateTab("Main", 0)
+
+TabMain:CreateToggle({
+    Name = "Auto Open Blocks",
+    CurrentValue = false,
+    Flag = "AutoOpen",
+    Callback = function(value)
+        openLoop = value
+        if value then
+            task.spawn(function()
+                while openLoop do
+                    local character = game:GetService("Players").LocalPlayer.Character
+                    local humanoid = character and character:FindFirstChild("Humanoid")
+                    local hrp = character and character:FindFirstChild("HumanoidRootPart")
+
+                    if character and humanoid and hrp then
+                        local targetSlot = nil
+                        local targetPos = nil
+                        for i = 1, 30 do
+                            if slotHasBlock(i) then
+                                local slotModel = myPlot.Slots[tostring(i)]
+                                if slotModel then
+                                    targetSlot = i
+                                    targetPos = slotModel:GetPivot().Position
+                                    break
+                                end
+                            end
+                        end
+
+                        if targetSlot and targetPos then
+                            -- Vérifier qu'une pickaxe est dispo avant de faire quoi que ce soit
+                            local tool = character:FindFirstChildWhichIsA("Tool")
+                            local hasPickaxe = tool and tool:GetAttribute("ItemType") == "Pickaxe"
+
+                            if not hasPickaxe then
+                                local backpack = game:GetService("Players").LocalPlayer.Backpack
+                                for _, item in ipairs(backpack:GetChildren()) do
+                                    if item:IsA("Tool") and item:GetAttribute("ItemType") == "Pickaxe" then
+                                        humanoid:EquipTool(item)
+                                        task.wait(0.3)
+                                        hasPickaxe = true
+                                        break
+                                    end
+                                end
+                            end
+
+                            -- Si toujours pas de pickaxe, on attend sans spam
+                            if not hasPickaxe then
+                                task.wait(5)
+                            else
+                                hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+                                task.wait(0.3)
+                                while openLoop and slotHasBlock(targetSlot) do
+                                    PickaxeRemote:FireServer("Damage")
+                                    task.wait(0.8)
+                                end
+                            end
+                        else
+                            task.wait(60)
+                        end
+                    else
+                        task.wait(0.5)
+                    end
+                end
+            end)
+        end
+    end,
+})
+
+TabMain:CreateToggle({
+    Name = "Auto Collect",
+    CurrentValue = false,
+    Flag = "AutoCollect",
+    Callback = function(value)
+        collectLoop = value
+        if value then
+            task.spawn(function()
+                while collectLoop do
+                    for i = 1, 30 do
+                        local slot = PlayerStateClient.GetFromDict("Plot.Slots", i)
+                        if slot and slot.Occupied and slot.Type == "Car" and slot.Cash and slot.Cash > 0 then
+                            CollectCash:FireServer(i)
+                            task.wait(0.1)
+                        end
+                    end
+                    task.wait(60)
+                end
+            end)
+        end
+    end,
+})
+
+TabMain:CreateToggle({
+    Name = "Auto Upgrade Plot",
+    CurrentValue = false,
+    Flag = "AutoUpgrade",
+    Callback = function(value)
+        upgradeLoop = value
+        if value then
+            task.spawn(function()
+                while upgradeLoop do
+                    local currentLevel = PlayerStateClient.GetPath("UpgradeLevel") or 0
+                    local nextLevel = currentLevel + 1
+                    local cost = Upgrade.GetUpgradeCost(nextLevel)
+                    if cost and (PlayerStateClient.Get("Cash") or 0) >= cost then
+                        BuyUpgrade:FireServer(nextLevel)
+                        task.wait(1)
+                    else
+                        task.wait(120)
+                    end
+                end
+            end)
+        end
+    end,
+})
+
+TabMain:CreateToggle({
+    Name = "Auto Place",
+    CurrentValue = false,
+    Flag = "AutoPlace",
+    Callback = function(value)
+        placeLoop = value
+        if value then
+            task.spawn(function()
+                while placeLoop do
+                    local blocks = {}
+                    for _, tool in ipairs(game:GetService("Players").LocalPlayer.Backpack:GetChildren()) do
+                        if tool:GetAttribute("ItemType") == "Block" then
+                            local itemName = tool:GetAttribute("ItemName")
+                            local uuid = tool:GetAttribute("UUID")
+                            local priority = RARITY_PRIORITY[itemName] or 0
+                            table.insert(blocks, {uuid = uuid, priority = priority})
+                        end
+                    end
+                    table.sort(blocks, function(a, b)
+                        return a.priority > b.priority
+                    end)
+                    local blockIndex = 1
+                    for i = 1, 30 do
+                        if not placeLoop then break end
+                        if blockIndex > #blocks then break end
+                        local slot = PlayerStateClient.GetFromDict("Plot.Slots", i)
+                        if slot and not slot.Occupied and not slot.Pending then
+                            PlaceItem:FireServer(i, "Block", blocks[blockIndex].uuid)
+                            blockIndex = blockIndex + 1
+                            task.wait(0.2)
+                        end
+                    end
+                    task.wait(5)
+                end
+            end)
+        end
+    end,
+})
+
+TabMain:CreateSection("Auto Buy")
+
+TabMain:CreateToggle({
+    Name = "Mutations Only",
+    CurrentValue = false,
+    Flag = "MutationsOnly",
+    Callback = function(value)
+        mutationsOnly = value
+    end,
+})
+
+TabMain:CreateToggle({
+    Name = "Auto Buy",
+    CurrentValue = false,
+    Flag = "AutoBuy",
+    Callback = function(value)
+        buyLoop = value
+        if value then
+            task.spawn(function()
+                while buyLoop do
+                    -- Skip si aucune rareté sélectionnée
+                    if next(selectedRarities) then
+                        for _, block in ipairs(myPlot.SpawnedBlocks:GetChildren()) do
+                            if not buyLoop then break end
+                            local ui = block:FindFirstChild("UIAttachment")
+                            if ui then
+                                local blockUI = ui:FindFirstChild("BlockUI")
+                                if blockUI then
+                                    local rarity = blockUI:FindFirstChild("Rarity")
+                                    local mutation = blockUI:FindFirstChild("Mutation")
+                                    local rarityVal = rarity and rarity.Text or ""
+                                    local mutationVal = mutation and mutation.Text or ""
+                                    local rarityOk = selectedRarities[rarityVal]
+                                    local mutationOk = not mutationsOnly or mutationVal ~= "Normal"
+                                    if rarityOk and mutationOk then
+                                        BuyBlock:FireServer(block.Name)
+                                        task.wait(0.1)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.5)
+                end
+            end)
+        end
+    end,
+})
+
+TabMain:CreateSection("Auto LvlUp")
+
+TabMain:CreateInput({
+    Name = "Target Level",
+    CurrentValue = "",
+    PlaceholderText = "Enter target level...",
+    RemoveTextAfterFocusLost = false,
+    Flag = "TargetLevel",
+    Callback = function(text)
+        targetLevel = tonumber(text) or 0
+    end,
+})
+
+TabMain:CreateToggle({
+    Name = "Auto LvlUp",
+    CurrentValue = false,
+    Flag = "AutoLvlUp",
+    Callback = function(value)
+        upgradeCarLoop = value
+        if value then
+            task.spawn(function()
+                while upgradeCarLoop do
+                    -- Skip si target level pas défini ou aucune rareté sélectionnée
+                    if targetLevel > 0 and next(selectedCarRarities) then
+                        for i = 1, 30 do
+                            if not upgradeCarLoop then break end
+                            local slot = PlayerStateClient.GetFromDict("Plot.Slots", i)
+                            if slot and slot.Occupied and slot.Type == "Car" then
+                                local carRarity = ""
+                                local slotModel = myPlot.Slots[tostring(i)]
+                                if slotModel then
+                                    local carModel = slotModel:FindFirstChild(slot.Name)
+                                    if carModel then
+                                        local ui = carModel:FindFirstChild("UIAttachment")
+                                        if ui then
+                                            local carUI = ui:FindFirstChild("CarUI")
+                                            if carUI then
+                                                local rarityLabel = carUI:FindFirstChild("Rarity")
+                                                if rarityLabel then carRarity = rarityLabel.Text end
+                                            end
+                                        end
+                                    end
+                                end
+                                if selectedCarRarities[carRarity] and (slot.Level or 1) < targetLevel then
+                                    UpgradeCar:FireServer(i)
+                                    task.wait(0.2)
+                                end
+                            end
+                        end
+                    end
+                    task.wait(1)
+                end
+            end)
+        end
+    end,
+})
+
+-- ══ TAB LVLUP RARITIES ══
+local TabLvlUpRarities = Window:CreateTab("LvlUp Rarities", 0)
+
+for _, rarity in ipairs(RARITIES) do
+    TabLvlUpRarities:CreateToggle({
+        Name = rarity,
+        CurrentValue = false,
+        Flag = "CarRarity_" .. rarity,
+        Callback = function(value)
+            selectedCarRarities[rarity] = value or nil
+        end,
+    })
+end
+
+-- ══ TAB RARITIES ══
+local TabRarities = Window:CreateTab("Rarities", 0)
+
+for _, rarity in ipairs(RARITIES) do
+    TabRarities:CreateToggle({
+        Name = rarity,
+        CurrentValue = false,
+        Flag = "Rarity_" .. rarity,
+        Callback = function(value)
+            selectedRarities[rarity] = value or nil
+        end,
+    })
+end
